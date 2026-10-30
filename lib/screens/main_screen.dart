@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
-import 'leaderboard_screen.dart';
+import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   final String username;
@@ -20,7 +20,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _screens = [
       HomeScreen(username: widget.username),
-      const LeaderboardScreen(),
+      ProfileScreen(username: widget.username),
     ];
   }
 
@@ -76,8 +76,8 @@ class _BottomNav extends StatelessWidget {
             onTap: () => onTap(0),
           ),
           _NavItem(
-            icon: Icons.leaderboard_rounded,
-            label: 'Bảng xếp hạng',
+            icon: Icons.person_rounded,
+            label: 'Cá nhân',
             isActive: currentIndex == 1,
             onTap: () => onTap(1),
           ),

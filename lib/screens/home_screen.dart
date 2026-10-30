@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/weather_service.dart';
 import '../services/speed_service.dart';
+import '../database/database_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   final String username;
@@ -78,7 +79,10 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  Future<void> _loadWeather() async {
+  Future<void> _loadWeather({bool showToast = false}) async {
+    if (mounted) {
+      setState(() => _loadingWeather = true);
+    }
     try {
       final data = await _weatherService.getWeather();
       if (!mounted) return;
@@ -88,6 +92,15 @@ class _HomeScreenState extends State<HomeScreen>
         _temp = (data['temp'] as num).toDouble();
         _loadingWeather = false;
       });
+      if (showToast && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã cập nhật thời tiết: $_city (${_temp.toStringAsFixed(1)}°C)'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -95,6 +108,15 @@ class _HomeScreenState extends State<HomeScreen>
         _weatherCondition = 'N/A';
         _loadingWeather = false;
       });
+      if (showToast && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Không thể lấy thời tiết mới'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -165,8 +187,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   String _movingStatus() {
-    if (_speed > 12) return '🚗 Đang lái xe';
-    if (_speed > 4) return '🚴 Đang chạy';
+    if (_speed > 25) return '🚗 Đang lái xe';
+    if (_speed > 12) return '🚴 Đang đạp xe';
+    if (_speed > 6) return '🏃 Đang chạy bộ';
     if (_speed > 0.5) return '🚶 Đang đi bộ';
     return '🧍 Đứng yên';
   }
@@ -237,94 +260,129 @@ class _HomeScreenState extends State<HomeScreen>
 
                 const SizedBox(height: 24),
 
-                // ── Weather Card ─────────────────────────────────
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 600),
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: gradColors,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: gradColors[0].withOpacity(0.45),
-                        blurRadius: 24,
-                        offset: const Offset(0, 10),
+                // ── Weather Card (Chạm để làm mới) ─────────────
+                GestureDetector(
+                  onTap: _loadingWeather
+                      ? null
+                      : () => _loadWeather(showToast: true),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 600),
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: gradColors,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    ],
-                  ),
-                  padding: const EdgeInsets.all(24),
-                  child: _loadingWeather
-                      ? const SizedBox(
-                          height: 110,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                                color: Colors.white),
-                          ),
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.location_on,
-                                          color: Colors.white70, size: 14),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        _city,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 13,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: [
+                        BoxShadow(
+                          color: gradColors[0].withOpacity(0.45),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(24),
+                    child: _loadingWeather
+                        ? const SizedBox(
+                            height: 110,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.white),
+                            ),
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.location_on,
+                                            color: Colors.white70, size: 14),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            _city,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 13,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '${_temp.toStringAsFixed(1)}°C',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 56,
-                                      fontWeight: FontWeight.bold,
-                                      height: 1.0,
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.18),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.refresh_rounded,
+                                                  color: Colors.white,
+                                                  size: 13),
+                                              SizedBox(width: 4),
+                                              Text(
+                                                'Làm mới',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.2),
-                                      borderRadius:
-                                          BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      _weatherCondition,
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      '${_temp.toStringAsFixed(1)}°C',
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
+                                        fontSize: 56,
+                                        fontWeight: FontWeight.bold,
+                                        height: 1.0,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.2),
+                                        borderRadius:
+                                            BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        _weatherCondition,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            Icon(
-                              _weatherIcon(_weatherCondition),
-                              size: 90,
-                              color: Colors.white.withOpacity(0.85),
-                            ),
-                          ],
-                        ),
+                              Icon(
+                                _weatherIcon(_weatherCondition),
+                                size: 90,
+                                color: Colors.white.withOpacity(0.85),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
 
                 const SizedBox(height: 20),
@@ -492,11 +550,151 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 18),
+
+                // ── Save Today's Workout Button ──────────────────
+                InkWell(
+                  onTap: _saveCurrentRunToHistory,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6C63FF), Color(0xFF8A4DFF)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6C63FF).withOpacity(0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.bookmark_add_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Lưu buổi tập vào trang Cá nhân',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _saveCurrentRunToHistory() {
+    final double currentDistance = _steps * 0.0008;
+
+    final nameController = TextEditingController(text: 'Hoạt động hôm nay 🏃');
+    final distController = TextEditingController(
+      text: currentDistance > 0 ? currentDistance.toStringAsFixed(2) : '2.50',
+    );
+    final durationController = TextEditingController(text: '25 phút');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF131629),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.bookmark_add_rounded, color: Color(0xFF00E5A0)),
+            SizedBox(width: 8),
+            Text(
+              'Lưu buổi tập',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Lưu kết quả vận động vào lịch sử cá nhân:',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'Tên buổi tập'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: distController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'Quãng đường (km)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: durationController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'Thời gian tập'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6C63FF),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              final title = nameController.text.trim();
+              final dist = double.tryParse(distController.text.trim()) ?? 2.0;
+              final dur = durationController.text.trim();
+              final steps = (_steps > 0) ? _steps : (dist / 0.0008).round();
+              final cal = (steps * 0.04).round();
+
+              await DatabaseHelper.instance.insertRun(
+                username: widget.username,
+                title: title.isEmpty ? 'Buổi tập hôm nay' : title,
+                distance: dist,
+                steps: steps,
+                calories: cal,
+                duration: dur.isEmpty ? '20 phút' : dur,
+                avgSpeed: _speed > 0 ? _speed : 7.5,
+              );
+
+              if (mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('🎉 Đã lưu "$title" (${dist.toStringAsFixed(2)} km) vào lịch sử!'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            child: const Text('Xác nhận lưu'),
+          ),
+        ],
       ),
     );
   }
