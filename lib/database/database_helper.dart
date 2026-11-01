@@ -248,4 +248,27 @@ CREATE TABLE IF NOT EXISTS run_history(
     final db = await instance.database;
     return await db.delete('run_history', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<int> updateRun({
+    required int id,
+    required String title,
+    required double distance,
+    required int steps,
+    required int calories,
+    required String duration,
+  }) async {
+    final db = await instance.database;
+    return await db.update(
+      'run_history',
+      {
+        'title': title,
+        'distance': distance,
+        'steps': steps,
+        'calories': calories,
+        'duration': duration,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 }

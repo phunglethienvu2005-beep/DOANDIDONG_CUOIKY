@@ -7,10 +7,10 @@ class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.username});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  State<ProfileScreen> createState() => ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
+class ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _runs = [];
   bool _loading = true;
@@ -30,7 +30,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeOut);
-    _loadHistory();
+    loadHistory();
   }
 
   @override
@@ -39,7 +39,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.dispose();
   }
 
-  Future<void> _loadHistory() async {
+  Future<void> loadHistory() async {
     final data = await DatabaseHelper.instance.getRunHistory(widget.username);
     if (!mounted) return;
 
@@ -146,7 +146,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
               if (mounted) {
                 Navigator.pop(ctx);
-                _loadHistory();
+                loadHistory();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Đã lưu buổi chạy vào lịch sử!'),
@@ -198,6 +198,233 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  void _showItemActions(Map<String, dynamic> item) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF131629),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Row(
+                children: [
+                  const Icon(Icons.directions_run_rounded,
+                      color: Color(0xFF00E5A0)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      item['title'] ?? 'Buổi tập',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C63FF).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.edit_rounded,
+                      color: Color(0xFF6C63FF), size: 20),
+                ),
+                title: const Text('Chỉnh sửa buổi tập',
+                    style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Sửa tên, quãng đường, thời gian',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showEditDialog(item);
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.delete_outline_rounded,
+                      color: Colors.redAccent, size: 20),
+                ),
+                title: const Text('Xóa buổi tập này',
+                    style: TextStyle(color: Colors.redAccent)),
+                subtitle: const Text('Xóa vĩnh viễn khỏi SQLite',
+                    style: TextStyle(color: Colors.white54, fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDelete(item);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditDialog(Map<String, dynamic> item) {
+    final titleController =
+        TextEditingController(text: item['title'] ?? '');
+    final distController =
+        TextEditingController(text: '${item['distance'] ?? ''}');
+    final durController =
+        TextEditingController(text: item['duration'] ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF131629),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.edit_rounded, color: Color(0xFF6C63FF)),
+            SizedBox(width: 8),
+            Text('Chỉnh sửa buổi tập',
+                style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'Tên buổi tập'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: distController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'Quãng đường (km)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: durController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: 'Thời gian tập'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6C63FF),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              final newTitle = titleController.text.trim();
+              final newDist =
+                  double.tryParse(distController.text.trim()) ?? 1.0;
+              final newDur = durController.text.trim();
+              final steps = (newDist / 0.0008).round();
+              final cal = (steps * 0.04).round();
+
+              await DatabaseHelper.instance.updateRun(
+                id: item['id'],
+                title: newTitle.isEmpty ? 'Buổi tập' : newTitle,
+                distance: newDist,
+                steps: steps,
+                calories: cal,
+                duration: newDur.isEmpty ? '20 phút' : newDur,
+              );
+
+              if (mounted) {
+                Navigator.pop(ctx);
+                loadHistory();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã cập nhật buổi tập thành công!'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            child: const Text('Lưu thay đổi'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(Map<String, dynamic> item) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF131629),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Xác nhận xóa',
+                style: TextStyle(color: Colors.white, fontSize: 18)),
+          ],
+        ),
+        content: Text(
+          'Bạn có chắc muốn xóa "${item['title'] ?? 'buổi tập'}" khỏi lịch sử?',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              await DatabaseHelper.instance.deleteRun(item['id']);
+              if (mounted) {
+                Navigator.pop(ctx);
+                loadHistory();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã xóa buổi tập khỏi lịch sử!'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
+            },
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -209,88 +436,109 @@ class _ProfileScreenState extends State<ProfileScreen>
               )
             : FadeTransition(
                 opacity: _fadeAnim,
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── Header Profile ───────────────────────────────
-                      Row(
-                        children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF6C63FF), Color(0xFF00E5A0)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF6C63FF).withOpacity(0.4),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
+                child: RefreshIndicator(
+                  color: const Color(0xFF6C63FF),
+                  backgroundColor: const Color(0xFF131629),
+                  onRefresh: loadHistory,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Header Profile ───────────────────────────────
+                        Row(
+                          children: [
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF6C63FF), Color(0xFF00E5A0)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                widget.username.isNotEmpty
-                                    ? widget.username[0].toUpperCase()
-                                    : 'U',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF6C63FF).withOpacity(0.4),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.username,
+                              child: Center(
+                                child: Text(
+                                  widget.username.isNotEmpty
+                                      ? widget.username[0].toUpperCase()
+                                      : 'U',
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 22,
+                                    fontSize: 28,
                                     fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.3,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF00E5A0).withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Text(
-                                    '🏃 Vận động viên FitTrack',
-                                    style: TextStyle(
-                                      color: Color(0xFF00E5A0),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.username,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF00E5A0).withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: const Text(
+                                      '🏃 Vận động viên FitTrack',
+                                      style: TextStyle(
+                                        color: Color(0xFF00E5A0),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            onPressed: _confirmLogout,
-                            icon: const Icon(Icons.logout_rounded,
-                                color: Colors.white60),
-                            tooltip: 'Đăng xuất',
-                          ),
-                        ],
-                      ),
+                            IconButton(
+                              onPressed: () {
+                                loadHistory();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Đã cập nhật lịch sử mới nhất'),
+                                    duration: Duration(seconds: 1),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.refresh_rounded,
+                                  color: Colors.white70),
+                              tooltip: 'Làm mới',
+                            ),
+                            IconButton(
+                              onPressed: _confirmLogout,
+                              icon: const Icon(Icons.logout_rounded,
+                                  color: Colors.white60),
+                              tooltip: 'Đăng xuất',
+                            ),
+                          ],
+                        ),
 
                       const SizedBox(height: 24),
 
@@ -434,82 +682,101 @@ class _ProfileScreenState extends State<ProfileScreen>
                                   width: 1,
                                 ),
                               ),
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 46,
-                                    height: 46,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF6C63FF).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: const Icon(
-                                      Icons.directions_run_rounded,
-                                      color: Color(0xFF6C63FF),
-                                      size: 24,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _showItemActions(item),
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16),
+                                    child: Row(
                                       children: [
-                                        Text(
-                                          item['title'] ?? 'Buổi chạy',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
+                                        Container(
+                                          width: 46,
+                                          height: 46,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF6C63FF)
+                                                .withOpacity(0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                          ),
+                                          child: const Icon(
+                                            Icons.directions_run_rounded,
+                                            color: Color(0xFF6C63FF),
+                                            size: 24,
                                           ),
                                         ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          dateStr,
-                                          style: const TextStyle(
-                                            color: Colors.white38,
-                                            fontSize: 12,
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                item['title'] ?? 'Buổi chạy',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                dateStr,
+                                                style: const TextStyle(
+                                                  color: Colors.white38,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                children: [
+                                                  _TagBadge(
+                                                    icon: Icons.timer_outlined,
+                                                    text: duration,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  _TagBadge(
+                                                    icon: Icons
+                                                        .local_fire_department_rounded,
+                                                    text: '$cal kcal',
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(height: 8),
-                                        Row(
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
                                           children: [
-                                            _TagBadge(
-                                              icon: Icons.timer_outlined,
-                                              text: duration,
+                                            Text(
+                                              '${dist.toStringAsFixed(2)}',
+                                              style: const TextStyle(
+                                                color: Color(0xFF00E5A0),
+                                                fontSize: 22,
+                                                fontWeight: FontWeight.bold,
+                                              ),
                                             ),
-                                            const SizedBox(width: 8),
-                                            _TagBadge(
-                                              icon: Icons.local_fire_department_rounded,
-                                              text: '$cal kcal',
+                                            const Text(
+                                              'km',
+                                              style: TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 12,
+                                              ),
                                             ),
                                           ],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Icon(
+                                          Icons.more_vert_rounded,
+                                          color: Colors.white24,
+                                          size: 18,
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        '${dist.toStringAsFixed(2)}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF00E5A0),
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const Text(
-                                        'km',
-                                        style: TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                ),
                               ),
                             );
                           },
@@ -519,6 +786,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                 ),
               ),
+            ),
       ),
     );
   }

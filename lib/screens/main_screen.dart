@@ -12,6 +12,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  final GlobalKey<ProfileScreenState> _profileKey = GlobalKey<ProfileScreenState>();
 
   late final List<Widget> _screens;
 
@@ -20,8 +21,15 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _screens = [
       HomeScreen(username: widget.username),
-      ProfileScreen(username: widget.username),
+      ProfileScreen(key: _profileKey, username: widget.username),
     ];
+  }
+
+  void _onTabTapped(int index) {
+    if (index == 1) {
+      _profileKey.currentState?.loadHistory();
+    }
+    setState(() => _currentIndex = index);
   }
 
   @override
@@ -34,7 +42,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
       bottomNavigationBar: _BottomNav(
         currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+        onTap: _onTabTapped,
       ),
     );
   }

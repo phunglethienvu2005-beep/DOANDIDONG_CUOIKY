@@ -27,10 +27,18 @@ class _HomeScreenState extends State<HomeScreen>
   // Steps
   int _steps = 0;
 
+  // GPS-based tracking (accumulate distance & steps when moving)
+  double _gpsDistance = 0.0;   // km – tổng quãng đường GPS tích lũy
+  int _gpsSteps = 0;           // bước chân tích lũy theo GPS
+  Position? _lastPosition;     // vị trí GPS trước đó để tính delta
+  DateTime? _lastPositionTime; // thời gian nhận vị trí trước
+  bool _isMoving = false;
+
   // Speed
   final SpeedService _speedService = SpeedService();
   double _speed = 0;
   StreamSubscription<Position>? _positionStream;
+  Timer? _speedResetTimer;
 
   // Animation
   late AnimationController _animController;
@@ -135,13 +143,86 @@ class _HomeScreenState extends State<HomeScreen>
   void _initSpeedOnly() {
     _positionStream =
         _speedService.getPositionStream().listen((Position pos) {
-      if (mounted) setState(() => _speed = pos.speed * 3.6);
+      if (!mounted) return;
+
+      final DateTime now = DateTime.now();
+      double currentSpeed = pos.speed * 3.6; // m/s → km/h
+
+      double addedDistance = 0.0;
+      int addedSteps = 0;
+
+      if (_lastPosition != null) {
+        final double meters = Geolocator.distanceBetween(
+          _lastPosition!.latitude,
+          _lastPosition!.longitude,
+          pos.latitude,
+          pos.longitude,
+        );
+
+        // Bỏ qua bước nhảy teleport lặp lại tuyến đường (> 50m)
+        if (meters >= 0.3 && meters <= 50.0) {
+          addedDistance = meters / 1000.0; // km
+          addedSteps = (addedDistance * 1250).round();
+          if (addedSteps > 3) addedSteps = 3;
+          if (addedSteps < 1) addedSteps = 1;
+
+          // Nếu máy ảo không gửi speed hoặc bị 0, tự tính từ khoảng cách / thời gian
+          if (currentSpeed <= 0.5 && _lastPositionTime != null) {
+            final double sec =
+                now.difference(_lastPositionTime!).inMilliseconds / 1000.0;
+            if (sec > 0) {
+              currentSpeed = (meters / sec) * 3.6;
+            }
+          }
+        }
+      }
+
+      // Xử lý tốc độ thông minh:
+      if (currentSpeed < 0.8 && addedDistance == 0) {
+        // Đứng yên tại chỗ
+        currentSpeed = 0.0;
+      } else if (currentSpeed < 0.8 && addedDistance > 0) {
+        // Máy ảo đang chạy route nhưng gửi speed = 0 -> gán tốc độ đi bộ thực tế
+        currentSpeed = 4.2;
+      }
+
+      // Lọc nhiễu
+      if (currentSpeed > 100) currentSpeed = 15.0;
+
+      final bool moving = currentSpeed > 0.5;
+
+      setState(() {
+        _speed = currentSpeed;
+        _isMoving = moving;
+
+        if (addedDistance > 0) {
+          _gpsDistance += addedDistance;
+          _gpsSteps += addedSteps;
+        }
+      });
+
+      _lastPosition = pos;
+      _lastPositionTime = now;
+
+      // Timer: CHỈ hạ về 0 khi thực sự dừng hẳn quá 8 giây
+      _speedResetTimer?.cancel();
+      if (moving) {
+        _speedResetTimer = Timer(const Duration(seconds: 8), () {
+          if (mounted) {
+            setState(() {
+              _speed = 0.0;
+              _isMoving = false;
+            });
+          }
+        });
+      }
     });
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
+    _speedResetTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }
@@ -397,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen>
                         iconColor: const Color(0xFF00E5A0),
                         glowColor: const Color(0xFF00E5A0),
                         title: 'Bước chân',
-                        value: _formatNumber(_steps),
+                        value: _formatNumber(_totalSteps()),
                         unit: 'bước hôm nay',
                         bgStart: const Color(0xFF0D2B22),
                         bgEnd: const Color(0xFF071A14),
@@ -465,16 +546,14 @@ class _HomeScreenState extends State<HomeScreen>
                         icon: Icons.local_fire_department_rounded,
                         color: const Color(0xFFFF6B35),
                         label: 'Calories tiêu thụ',
-                        value:
-                            '${(_steps * 0.04).toStringAsFixed(0)} kcal',
+                        value: '${(_totalSteps() * 0.04).toStringAsFixed(0)} kcal',
                       ),
                       const _Divider(),
                       _ActivityRow(
                         icon: Icons.straighten_rounded,
                         color: const Color(0xFF42A5F5),
                         label: 'Quãng đường',
-                        value:
-                            '${(_steps * 0.0008).toStringAsFixed(2)} km',
+                        value: '${_totalDistance().toStringAsFixed(2)} km',
                       ),
                       const _Divider(),
                       _ActivityRow(
@@ -530,7 +609,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '$_steps / 10,000 bước',
+                        '${_totalSteps()} / 10,000 bước',
                         style: const TextStyle(
                             color: Colors.white54, fontSize: 12),
                       ),
@@ -538,7 +617,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: LinearProgressIndicator(
-                          value: (_steps / 10000).clamp(0.0, 1.0),
+                          value: (_totalSteps() / 10000).clamp(0.0, 1.0),
                           minHeight: 10,
                           backgroundColor:
                               Colors.white.withOpacity(0.08),
@@ -603,7 +682,8 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _saveCurrentRunToHistory() {
-    final double currentDistance = _steps * 0.0008;
+    // Ưu tiên dùng GPS distance nếu có, nếu không thì tính từ bước chân
+    final double currentDistance = _totalDistance();
 
     final nameController = TextEditingController(text: 'Hoạt động hôm nay 🏃');
     final distController = TextEditingController(
@@ -684,6 +764,13 @@ class _HomeScreenState extends State<HomeScreen>
 
               if (mounted) {
                 Navigator.pop(ctx);
+                setState(() {
+                  _gpsDistance = 0.0;
+                  _gpsSteps = 0;
+                  _steps = 0;
+                  _speed = 0.0;
+                  _isMoving = false;
+                });
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('🎉 Đã lưu "$title" (${dist.toStringAsFixed(2)} km) vào lịch sử!'),
@@ -706,8 +793,24 @@ class _HomeScreenState extends State<HomeScreen>
     return '$n';
   }
 
+  // Tổng bước chân = bước từ cảm biến + bước tích lũy theo GPS
+  int _totalSteps() {
+    final int sensorSteps = _steps;
+    final int gpsSteps = _gpsSteps;
+    // Nếu cảm biến pedometer hoạt động (trên máy thật), dùng nó làm chính
+    // Nếu đang trên máy ảo (steps = 0), dùng GPS steps để demo
+    if (sensorSteps > 0) return sensorSteps;
+    return gpsSteps;
+  }
+
+  // Tổng quãng đường = GPS tích lũy (nếu có) hoặc tính từ bước chân
+  double _totalDistance() {
+    if (_gpsDistance > 0) return _gpsDistance;
+    return _steps * 0.0008;
+  }
+
   int _progressPercent() {
-    return ((_steps / 10000) * 100).clamp(0, 100).toInt();
+    return ((_totalSteps() / 10000) * 100).clamp(0, 100).toInt();
   }
 }
 
